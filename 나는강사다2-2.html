@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>강의 예약 시스템</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { margin: 20px; font-family: Arial, sans-serif; }
+    .lecture-card { margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+    .lecture-header { display: flex; justify-content: space-between; align-items: center; }
+    .lecture-details { margin-top: 10px; }
+    .btn-reserve { margin-top: 10px; }
+    .reservation-table { margin-top: 30px; }
+    #admin-section { display: none; margin-top: 20px; }
+    #admin-section.active { display: block; }
+    #admin-password-modal { display: none; }
+    #admin-password-modal.active { display: block; background: rgba(0, 0, 0, 0.5); position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000; display: flex; justify-content: center; align-items: center; }
+    #admin-password-modal .modal-content { background: #fff; padding: 20px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="mb-4">강의 예약 시스템</h1>
+
+    <div id="lectures" class="row">
+      <!-- 사용자에게 보여지는 강의 카드가 여기에 표시됩니다 -->
+    </div>
+
+    <div class="reservation-list mt-5">
+      <h2>등록된 강의 목록</h2>
+      <table class="table table-striped reservation-table">
+        <thead>
+          <tr>
+            <th>강의명</th>
+            <th>강사</th>
+            <th>삭제</th>
+          </tr>
+        </thead>
+        <tbody id="reservation-table">
+          <!-- 예약된 강의가 여기에 표시됩니다 -->
+        </tbody>
+      </table>
+    </div>
+
+    <button id="admin-toggle" class="btn btn-primary mt-4">관리자 모드 열기</button>
+
+    <div id="admin-password-modal" class="modal">
+      <div class="modal-content">
+        <h3>관리자 로그인</h3>
+        <label>비밀번호: <input type="password" id="admin-password" class="form-control"></label>
+        <button id="admin-login-btn" class="btn btn-success mt-2">로그인</button>
+        <button id="admin-cancel-btn" class="btn btn-secondary mt-2">취소</button>
+      </div>
+    </div>
+
+    <div id="admin-section" class="mt-4">
+      <h2>관리자 모드</h2>
+      <h3>강의 추가</h3>
+      <div class="mb-3">
+        <label for="admin-lecture-title" class="form-label">강의명</label>
+        <input type="text" id="admin-lecture-title" class="form-control" placeholder="강의명을 입력하세요">
+      </div>
+      <div class="mb-3">
+        <label for="admin-lecture-date" class="form-label">강의 날짜</label>
+        <input type="date" id="admin-lecture-date" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label for="admin-lecture-instructor" class="form-label">강사</label>
+        <input type="text" id="admin-lecture-instructor" class="form-control" placeholder="강사를 입력하세요">
+      </div>
+      <div class="mb-3">
+        <label for="admin-lecture-description" class="form-label">강의 설명</label>
+        <input type="text" id="admin-lecture-description" class="form-control" placeholder="강의 설명을 입력하세요">
+      </div>
+      <div class="mb-3">
+        <label for="admin-lecture-slots" class="form-label">남은 자리</label>
+        <input type="number" id="admin-lecture-slots" class="form-control" value="0">
+      </div>
+      <button id="add-lecture-btn" class="btn btn-primary">강의 추가</button>
+
+      <h3 class="mt-5">예약된 강의 목록</h3>
+      <button id="download-reservations-btn" class="btn btn-success mt-3">예약 리스트 다운로드</button>
+      <table id="lecture-management-table" class="table">
+        <thead>
+          <tr>
+            <th>강의명</th>
+            <th>강사</th>
+            <th>수정</th>
+            <th>삭제</th>
+          </tr>
+        </thead>
+        <tbody id="lecture-management-body">
+          <!-- 등록된 강의 목록이 여기에 표시됩니다 -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let lectures = []; // 강의 추가 배열
+    const reservations = [];
+    const adminSection = document.getElementById('admin-section');
+    const adminToggle = document.getElementById('admin-toggle');
+    const addLectureBtn = document.getElementById('add-lecture-btn');
+    const lectureContainer = document.getElementById('lectures');
+    const reservationTable = document.getElementById('reservation-table');
+    const lectureManagementBody = document.getElementById('lecture-management-body');
+    const adminPasswordModal = document.getElementById('admin-password-modal');
+    const adminLoginBtn = document.getElementById('admin-login-btn');
+    const adminCancelBtn = document.getElementById('admin-cancel-btn');
+    const adminPassword = "1234"; // 기본 비밀번호 설정
+
+    // 강의 목록을 화면에 표시하는 함수
+    function displayLectures() {
+      lectureContainer.innerHTML = '';
+      lectures.forEach((lecture) => {
+        const lectureCard = document.createElement('div');
+        lectureCard.className = 'col-md-4 lecture-card';
+        lectureCard.innerHTML = `
+          <div class="lecture-header">
+            <h3>${lecture.title}</h3>
+            <span>남은 자리: <strong id="slots-${lecture.id}">${lecture.slots}</strong></span>
+          </div>
+          <div class="lecture-details">
+            <p><strong>날짜:</strong> ${lecture.date}</p>
+            <p><strong>강사:</strong> ${lecture.instructor}</p>
+            <p>${lecture.description}</p>
+          </div>
+          <div class="reservation-form">
+            <input type="text" id="name-${lecture.id}" class="form-control mb-2" placeholder="이름">
+            <input type="text" id="contact-${lecture.id}" class="form-control mb-2" placeholder="연락처">
+            <button class="btn btn-primary btn-reserve" id="reserve-${lecture.id}" ${
+          lecture.slots === 0 ? "disabled" : ""
+        }>예약하기</button>
+          </div>
+        `;
+        lectureContainer.appendChild(lectureCard);
+
+        const button = document.getElementById(`reserve-${lecture.id}`);
+        button.addEventListener('click', () => {
+          const name = document.getElementById(`name-${lecture.id}`).value.trim();
+          const contact = document.getElementById(`contact-${lecture.id}`).value.trim();
+
+          if (!name || !contact) {
+            alert('이름과 연락처를 입력해주세요.');
+            return;
+          }
+
+          if (lecture.slots > 0) {
+            lecture.slots -= 1;
+            document.getElementById(`slots-${lecture.id}`).textContent = lecture.slots;
+
+            if (lecture.slots === 0) {
+              button.disabled = true;
+            }
+
+            const maskedContact = contact.slice(0, -4) + "****";
+            reservations.push({ title: lecture.title, name, contact, instructor: lecture.instructor });
+
+            const row = document.createElement("tr");
+            row.innerHTML = `<td>${lecture.title}</td><td>${name}</td><td>${maskedContact}</td><td><button onclick="deleteReservation(this, '${contact}', '${maskedContact}')">삭제</button></td>`;
+            reservationTable.appendChild(row);
+
+            updateLectureManagementTable(); // 예약 추가 후 강의 관리 테이블 갱신
+          } else {
+            alert('더 이상 자리가 없습니다.');
+          }
+        });
+      });
+    }
+
+    // 강의 추가
+    addLectureBtn.addEventListener('click', () => {
+      const title = document.getElementById('admin-lecture-title').value.trim();
+      const date = document.getElementById('admin-lecture-date').value;
+      const instructor = document.getElementById('admin-lecture-instructor').value.trim();
+      const description = document.getElementById('admin-lecture-description').value.trim();
+      const slots = parseInt(document.getElementById('admin-lecture-slots').value);
+
+      if (!title || !date || !instructor || !description || isNaN(slots)) {
+        alert('모든 정보를 입력하세요.');
+        return;
+      }
+
+      const lecture = {
+        id: lectures.length + 1,
+        title,
+        date,
+        instructor,
+        description,
+        slots
+      };
+
+      lectures.push(lecture);
+      displayLectures();
+      updateLectureManagementTable(); // 강의 관리 테이블 갱신
+
+    // 예약 리스트 다운로드
+    document.getElementById('download-reservations-btn').addEventListener('click', () => {
+      if (reservations.length === 0) {
+        alert('예약된 강의가 없습니다.');
+        return;
+      }
+
+      const csvContent = "data:text/csv;charset=utf-8,"
+        + "강의명,예약자명,연락처,강사\n"
+        + reservations.map(reservation => 
+            `${reservation.title},${reservation.name},${reservation.contact},${reservation.instructor}`).join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', '예약자_리스트.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+      // 입력 필드 초기화
+      document.getElementById('admin-lecture-title').value = '';
+      document.getElementById('admin-lecture-date').value = '';
+      document.getElementById('admin-lecture-instructor').value = '';
+      document.getElementById('admin-lecture-description').value = '';
+      document.getElementById('admin-lecture-slots').value = 0;
+    });
+
+
+    // 관리모드 로그인
+    adminToggle.addEventListener('click', () => {
+      adminPasswordModal.classList.add('active');
+    });
+
+    adminLoginBtn.addEventListener('click', () => {
+      const enteredPassword = document.getElementById('admin-password').value;
+      if (enteredPassword === adminPassword) {
+        adminPasswordModal.classList.remove('active');
+        adminSection.classList.add('active');
+      } else {
+        alert('잘못된 비밀번호입니다.');
+      }
+    });
+
+    adminCancelBtn.addEventListener('click', () => {
+      adminPasswordModal.classList.remove('active');
+    });
+
+   // 강의 관리 테이블 갱신 함수
+function updateLectureManagementTable() {
+  lectureManagementBody.innerHTML = '';
+  lectures.forEach((lecture, index) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${lecture.title}</td>
+      <td>${lecture.instructor}</td>
+      <td><button onclick="editLecture(${index})">수정</button></td>
+      <td><button onclick="deleteLecture(${index})">삭제</button></td>
+    `;
+    lectureManagementBody.appendChild(row);
+  });
+}
+
+// 강의 수정 함수
+function editLecture(index) {
+  const lecture = lectures[index];
+  document.getElementById('admin-lecture-title').value = lecture.title;
+  document.getElementById('admin-lecture-date').value = lecture.date;
+  document.getElementById('admin-lecture-instructor').value = lecture.instructor;
+  document.getElementById('admin-lecture-description').value = lecture.description;
+  document.getElementById('admin-lecture-slots').value = lecture.slots;
+
+  // "강의 추가" 버튼을 "수정" 버튼으로 변경
+  addLectureBtn.textContent = '강의 수정';
+  addLectureBtn.onclick = () => updateLecture(index);
+}
+
+// 강의 수정 처리 함수
+function updateLecture(index) {
+  const title = document.getElementById('admin-lecture-title').value.trim();
+  const date = document.getElementById('admin-lecture-date').value;
+  const instructor = document.getElementById('admin-lecture-instructor').value.trim();
+  const description = document.getElementById('admin-lecture-description').value.trim();
+  const slots = parseInt(document.getElementById('admin-lecture-slots').value);
+
+  // 입력값 검증
+  if (!title || !date || !instructor || !description || isNaN(slots)) {
+    alert('모든 정보를 입력하세요.');
+    return;
+  }
+
+  // 수정된 강의 정보로 강의 배열 업데이트
+  lectures[index] = { id: lectures[index].id, title, date, instructor, description, slots };
+
+  // 강의 목록과 관리 테이블 갱신
+  displayLectures();
+  updateLectureManagementTable();
+
+  // "강의 수정" 버튼을 "강의 추가" 버튼으로 되돌리기
+  addLectureBtn.textContent = '강의 추가';
+  addLectureBtn.onclick = () => addLecture();
+}
+
+// 강의 삭제 함수
+function deleteLecture(index) {
+  if (confirm("정말로 이 강의를 삭제하시겠습니까?")) {
+    lectures.splice(index, 1);
+    updateLectureManagementTable();
+    displayLectures();  // 강의 삭제 후, 강의 목록 갱신
+  }
+}
+
+    // 페이지 로드 시 강의 표시
+    window.onload = displayLectures;
+  </script>
+</body>
+</html>
+
